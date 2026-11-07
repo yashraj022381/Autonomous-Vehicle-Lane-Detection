@@ -1,9 +1,15 @@
 """Lane Detection Studio.   Run:  streamlit run app.py"""
 import os
+import sys
 import tempfile
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]   # the repo folder (one level above app/)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+  
 
 #import cv2
 import numpy as np
@@ -16,10 +22,10 @@ from lane_detection.config import ClassicalConfig, DeepConfig
 from lane_detection.insights import compute_insights, probability_heatmap
 
 WEIGHT_CHOICES = {
-    "Fast v2 + CULane (256x128)": "weights/unet_lane_fast_v2.pt",
-    "Fast (256x128)": "weights/unet_lane_fast.pt",
-    "Accurate v2 + CULane (512x256)": "weights/unet_lane_v2.pt",
-    "Accurate (512x256)": "weights/unet_lane.pt",
+    "Fast v2 + CULane (256x128)": str(ROOT / "weights" / "unet_lane_fast_v2.pt"),
+    "Fast (256x128)": str(ROOT / "weights" / "unet_lane_fast.pt"),
+    "Accurate v2 + CULane (512x256)": str(ROOT / "weights" / "unet_lane_v2.pt"),
+    "Accurate (512x256)": str(ROOT / "weights" / "unet_lane.pt"),
 }
 MODES = ["Classical", "Deep Learning", "Comparison"]
 
