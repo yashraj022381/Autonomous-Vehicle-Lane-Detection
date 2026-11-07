@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-import cv2
+#import cv2
 import numpy as np
 import streamlit as st
 
