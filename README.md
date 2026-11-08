@@ -6,6 +6,7 @@ Detect road lanes from dashcam footage using computer vision.
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-ee4c2c?logo=pytorch&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-FF4B4B?logo=streamlit&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-yellow)
+![Stars](https://img.shields.io/github/stars/yashraj022381/Autonomous-Vehicle-Lane-Detection?style=social)
 
 🌐 Live demo
 👉 **[Try the Live Demo here](https://autonomous-vehicle-lane-detection-9a7cuj4bmnmkumrb7vjmzs.streamlit.app///)**
