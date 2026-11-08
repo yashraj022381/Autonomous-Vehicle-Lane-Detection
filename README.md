@@ -213,6 +213,7 @@ Project structure
     > The accurate model is slow on CPU (~5 FPS); use the fast model for real-time video.
     > Car-position estimation assumes a centred camera.
     > ros2_lane_node.py, if present, is an untested reference for a real ROS 2 setup; the pure-Python ROS-style demo is what runs and is tested.
+    > Auto selection uses model confidence, which is not the same as accuracy. It mainly avoids a model that finds no lane and picks a sensible speed class; it has not been validated against labelled frames.
     
 
 🗺️ Roadmap
