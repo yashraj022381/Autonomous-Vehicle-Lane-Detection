@@ -45,7 +45,7 @@ Detect road lanes from dashcam footage using computer vision.
 
 Lane Detection Studio finds the lane a car is driving in, draws it on the picture, and tells you how well it is doing. It contains two complete detectors behind one interface, so you can swap them, benchmark them and compare them in the same app:
 
-                
+
                 Classical pipeline	                                Deep-learning pipeline
 _______________________________________________________________________________________________________________________________
 Idea	          Hand-written rules: edges, colour, geometry	        A U-Net learns what a lane looks like from labelled photos
@@ -54,7 +54,7 @@ Strength	      Extremely fast, needs no training	                  Handles faded
 Weakness	      Fails on faded paint, snow, low light	              Needs training data and more compute
 
 
-Features
+✨ Features
 
 - 🧠 Classical detector: grayscale + blur → Canny edges + white/yellow colour mask → trapezoid region of interest → probabilistic Hough transform → slope-based left/right split → length-weighted averaging → temporal smoothing. Includes a geometry sanity check that rejects crossed or widening lane pairs instead of drawing a wrong shape.
 
@@ -177,7 +177,8 @@ Features
 
 
 
-Project structure
+📁 Project structure
+
   text
   lane-detection/
   ├── app/
@@ -207,22 +208,22 @@ Project structure
 
   - Training data is a folder with matching names: images/NAME.jpg and masks/NAME.png (white = lane).
 
-   bash
-   # 1. Make image/mask pairs (see --help for all options)
-   python -m tusimple_to_masks --help
-   python -m culane_to_masks --root /path/to/CULane --out data/culane_subset --count 6000
+    bash
+    # 1. Make image/mask pairs (see --help for all options)
+    python -m tusimple_to_masks --help
+    python -m culane_to_masks --root /path/to/CULane --out data/culane_subset --count 6000
 
-   # 2. Put the pairs together in one folder, e.g. data/combined/{images,masks}
+    # 2. Put the pairs together in one folder, e.g. data/combined/{images,masks}
 
-   # 3. Train (a GPU is strongly recommended; the project used a free Kaggle T4)
-   python -m train --data data/combined --out weights/unet_lane_v2.pt \
-       --epochs 20 --base 16 --height 256 --width 512
+    # 3. Train (a GPU is strongly recommended; the project used a free Kaggle T4)
+    python -m train --data data/combined --out weights/unet_lane_v2.pt \
+        --epochs 20 --base 16 --height 256 --width 512
 
-   # Fast variant
-   python -m train --data data/combined --out weights/unet_lane_fast_v2.pt \
+    # Fast variant
+    python -m train --data data/combined --out weights/unet_lane_fast_v2.pt \
        --epochs 25 --base 8 --height 128 --width 256
 
- - The checkpoint stores {"model", "base", "size"}, so the app picks it up without changing any configuration. To list a new checkpoint in the app's Model dropdown, add it to WEIGHT_CHOICES at the top of app/app.py.
+  - The checkpoint stores {"model", "base", "size"}, so the app picks it up without changing any configuration. To list a new checkpoint in the app's Model dropdown, add it to WEIGHT_CHOICES at the top of app/app.py.
 
 
 🧪 Testing
