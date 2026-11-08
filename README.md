@@ -12,8 +12,8 @@ Detect road lanes from dashcam footage using computer vision.
 
 | Main UI |
 |:-------------------:|
-| ![Main](screeshots/main_ui-1.png) |
-| ![Main](screeshots/main_ui-2.png) |
+| ![Main_UI](screeshots/main_ui-1.png) |
+| ![Main_UI](screeshots/main_ui-2.png) |
 
 | Classical Detection |
 |:-------------------:|
