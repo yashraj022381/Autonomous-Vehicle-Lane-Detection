@@ -1,4 +1,3 @@
-"""Step 6a: turn many messy segments into ONE left and ONE right lane."""
 from typing import NamedTuple, Optional, Tuple
 import numpy as np
 from ..config import ClassicalConfig
@@ -22,6 +21,20 @@ def _average_to_lane(group: list, y_bottom: int, y_top: int) -> Optional[Lane]:
                 (y_top - intercept) / slope, y_top)
 
 
+def is_plausible_pair(left: Lane, right: Lane) -> bool:
+    """A real lane gets NARROWER as it goes away from the car.
+
+    Three checks, all must pass:
+      1. at the bottom the left line is to the left of the right line,
+      2. at the top the left line is still to the left of the right line
+         (if they swapped, the two lines CROSS - that makes an "X"),
+      3. the gap at the top is smaller than the gap at the bottom.
+    """
+    bottom_gap = right.x1 - left.x1
+    top_gap = right.x2 - left.x2
+    return bottom_gap > 0 and top_gap > 0 and top_gap < bottom_gap
+
+
 def fit_lanes(segments: np.ndarray, shape: tuple,
               cfg: ClassicalConfig) -> Tuple[Optional[Lane], Optional[Lane]]:
     h = shape[0]
@@ -39,8 +52,15 @@ def fit_lanes(segments: np.ndarray, shape: tuple,
         (left if slope < 0 else right).append((slope, intercept, length))
 
     y_bottom, y_top = h, int(h * cfg.lane_top_y)
-    return (_average_to_lane(left, y_bottom, y_top),
-            _average_to_lane(right, y_bottom, y_top))
+    left_lane = _average_to_lane(left, y_bottom, y_top)
+    right_lane = _average_to_lane(right, y_bottom, y_top)
+
+    # Both found but they don't look like one road (crossed / widening):
+    # better to draw nothing than a wrong shape.
+    if left_lane is not None and right_lane is not None \
+            and not is_plausible_pair(left_lane, right_lane):
+        return None, None
+    return left_lane, right_lane
 
 
 class LaneSmoother:
