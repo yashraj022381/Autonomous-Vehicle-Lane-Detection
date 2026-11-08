@@ -8,6 +8,12 @@ Detect road lanes from dashcam footage using computer vision.
 ![License](https://img.shields.io/badge/License-MIT-yellow)
 ![Stars](https://img.shields.io/github/stars/yashraj022381/Autonomous-Vehicle-Lane-Detection?style=social)
 
+📸 Screenshots
+
+| Classical Detection | Deep Learning Detection | Comparison Mode |
+|:-------------------:|:-----------------------:|:---------------:|
+| ![Classical](outputs/classical_example.png) | ![Deep](outputs/deep_example.png) | ![Comparison](outputs/comparison_example.png) |
+
 🌐 Live demo
 👉 **[Try the Live Demo here](https://autonomous-vehicle-lane-detection-9a7cuj4bmnmkumrb7vjmzs.streamlit.app///)**
 
