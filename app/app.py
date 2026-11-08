@@ -1,15 +1,15 @@
-"""Lane Detection Studio.   Run:  streamlit run app.py"""
+"""Lane Detection Studio.   Run:  streamlit run app/app.py"""
 import os
 import sys
 import tempfile
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]   # the repo folder (one level above app/)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-  
+
 
 import cv2
 import numpy as np
@@ -17,6 +17,8 @@ import streamlit as st
 
 from lane_detection.app_helpers import (RollingSpeed, add_label,
                                          resize_to_width, side_by_side)
+from lane_detection.auto_select import (candidates_from_choices, run_auto,
+                                        sample_video_frames)
 from lane_detection.classical.pipeline import ClassicalLaneDetector
 from lane_detection.config import ClassicalConfig, DeepConfig
 from lane_detection.insights import compute_insights, probability_heatmap
@@ -27,6 +29,7 @@ WEIGHT_CHOICES = {
     "Accurate v2 + CULane (512x256)": str(ROOT / "weights" / "unet_lane_v2.pt"),
     "Accurate (512x256)": str(ROOT / "weights" / "unet_lane.pt"),
 }
+AUTO_LABEL = "🤖 Auto (picks the best for your file)"
 MODES = ["Classical", "Deep Learning", "Comparison"]
 
 st.set_page_config(page_title="Lane Detection Studio", page_icon="🛣️", layout="wide")
@@ -43,7 +46,9 @@ class Settings:
     deep_cfg: DeepConfig
     every: int
     max_frames: int
-    weights: int
+    weights: str
+    auto: bool = False                               # True = let the app pick the model
+    available: dict = field(default_factory=dict)    # {label: path} of models that exist
 
 
 def sidebar() -> Settings:
@@ -66,27 +71,31 @@ def sidebar() -> Settings:
         color = st.sidebar.checkbox("White/yellow color filter", c_cfg.use_color_mask)
         c_cfg = replace(c_cfg, canny_low=low, canny_high=high,
                         hough_threshold=hough, use_color_mask=color)
-    #if mode in ("Deep Learning", "Comparison"):
-    #    st.sidebar.subheader("Deep Learning")
-    #    thr = st.sidebar.slider("Lane threshold", 0.1, 0.9, d_cfg.threshold, 0.05)
-    #    d_cfg = replace(d_cfg, threshold=thr)
 
     weights = next(iter(WEIGHT_CHOICES.values()))
+    available, auto = {}, False
     if mode in ("Deep Learning", "Comparison"):
         st.sidebar.subheader("Deep Learning")
         available = {k: v for k, v in WEIGHT_CHOICES.items() if Path(v).exists()}
         if available:
-            weights = available[st.sidebar.selectbox("Model", list(available))]
-        #thr = st.sidebar.slider("Lane threshold", 0.1, 0.9, d_cfg.threshold, 0.05)
+            pick = st.sidebar.selectbox("Model", [AUTO_LABEL] + list(available))
+            auto = pick == AUTO_LABEL
+            if auto:
+                weights = next(iter(available.values()))     # used until Auto has chosen
+                st.sidebar.caption("Auto tries the models on your file and picks one. "
+                                   "Videos use the fast models only.")
+            else:
+                weights = available[pick]
         thr = st.sidebar.slider("Lane threshold", 0.1, 0.9, d_cfg.threshold, 0.05)
         ego = st.sidebar.checkbox("Show only my lane", d_cfg.ego_only,
                                   help="Hide neighbouring lanes and stray blobs")
         d_cfg = replace(d_cfg, threshold=thr, ego_only=ego)
-        
+
     st.sidebar.subheader("Video options")
     every = st.sidebar.number_input("Process every Nth frame", 1, 10, 1)
     max_frames = st.sidebar.number_input("Max frames", 10, 5000, 300, step=50)
-    return Settings(mode, width, smooth, c_cfg, d_cfg, int(every), int(max_frames), weights)
+    return Settings(mode, width, smooth, c_cfg, d_cfg, int(every), int(max_frames),
+                    weights, auto, available)
 
 
 # --------------------------------------------------------------- detectors
@@ -111,6 +120,56 @@ def build_detectors(s: Settings) -> dict:
         deep.reset()
         dets["Deep Learning"] = deep
     return dets
+
+
+# -------------------------------------------------------------------- auto
+def choose_model_automatically(s: Settings, upload, kind: str):
+    """Let the models audition on the uploaded file and return the winner (or None).
+
+    The result is remembered for this file and these settings, so clicking buttons
+    does not repeat the audition."""
+    key = (upload.name, upload.size, kind, s.width, s.deep_cfg.threshold,
+           s.deep_cfg.ego_only, tuple(s.available))
+    saved = st.session_state.get("auto_choice")
+    if saved and saved[0] == key:
+        return saved[1]
+
+    is_video = kind == "Video"
+    with st.spinner("🤖 Auto is trying the models on your file..."):
+        if is_video:
+            suffix = Path(upload.name).suffix or ".mp4"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+                tmp.write(upload.getbuffer())
+                path = tmp.name
+            try:
+                frames = sample_video_frames(path, width=s.width)
+            finally:
+                os.remove(path)
+        else:
+            frame = cv2.imdecode(np.frombuffer(upload.getvalue(), np.uint8), cv2.IMREAD_COLOR)
+            frames = [] if frame is None else [resize_to_width(frame, s.width)]
+        if not frames:
+            return None
+
+        def loader(weights_path: str):
+            det = load_deep(weights_path)
+            det.cfg = s.deep_cfg
+            return det
+
+        choice = run_auto(frames, candidates_from_choices(s.available), loader,
+                          is_video, s.deep_cfg.threshold, s.deep_cfg.ego_only)
+    st.session_state["auto_choice"] = (key, choice)
+    return choice
+
+
+def explain_auto(choice) -> None:
+    st.info(f"🤖 **Auto picked {choice.label}.** {choice.reason}")
+    with st.expander("How did Auto decide?"):
+        for label, score in sorted(choice.scores.items(), key=lambda kv: -kv[1]):
+            st.write(f"- {label}: **{score:.0%}**")
+        st.caption(f"Score = average confidence over {choice.frames_used} sample frame(s); "
+                   "0% means no lane was found. Models not listed were not tried "
+                   "(video uses the fast models only). Confidence is not the same as accuracy.")
 
 
 # ------------------------------------------------------------------- panel
@@ -142,18 +201,13 @@ class Panel:
         self.ms_box.metric("Processing time", f"{self.speed.avg_ms:.1f} ms")
 
     def update(self, frame_bgr, ms: float):
-        #self.speed.add(ms)
-        #show_image(self.image, frame_bgr, channels="BGR")
-        #self.fps_box.metric("FPS", f"{self.speed.fps:.1f}")
-        #self.ms_box.metric("Processing time", f"{self.speed.avg_ms:.1f} ms")
         self.record(ms)
         self.show(frame_bgr)
 
-        
 
-def ai_panel(frame, res, threshold: float):
+def ai_panel(frame, res, threshold: float, ego_only: bool = True):
     prob = res.debug["probability"]
-    ins = compute_insights(prob, threshold)
+    ins = compute_insights(prob, threshold, ego_only)
     st.markdown(f"**Confidence:** {ins.confidence:.0%} &nbsp;|&nbsp; "
                 f"**Lane coverage:** {ins.coverage:.1f}% &nbsp;|&nbsp; "
                 f"**Car position:** {ins.status}")
@@ -180,7 +234,7 @@ def run_image(dets: dict, data: bytes, s: Settings):
                 st.image(res.debug["masked_edges"])
         else:
             with col.expander("🧠 AI results (what the model thinks)", expanded=True):
-                ai_panel(frame, res, s.deep_cfg.threshold)
+                ai_panel(frame, res, s.deep_cfg.threshold, s.deep_cfg.ego_only)
 
 
 # ------------------------------------------------------------------- video
@@ -204,7 +258,7 @@ def run_video(dets: dict, upload, s: Settings):
     panels = {n: Panel(c, n) for c, n in zip(st.columns(len(dets)), dets)}
     progress = st.progress(0.0, text="Processing...")
     ai_box = st.empty()
-     
+
     out_path = Path(tempfile.gettempdir()) / f"lane_result_{int(time.time())}.mp4"
     writer, idx, done = None, 0, 0
     latest, last_ui = {}, 0.0
@@ -215,12 +269,12 @@ def run_video(dets: dict, upload, s: Settings):
             panels[name].show(res.overlay)
         if "Deep Learning" in latest:
             ins = compute_insights(latest["Deep Learning"].debug["probability"],
-                                   s.deep_cfg.threshold)
+                                   s.deep_cfg.threshold, s.deep_cfg.ego_only)
             ai_box.markdown(f"🧠 **AI results** — confidence **{ins.confidence:.0%}** · "
                             f"coverage **{ins.coverage:.1f}%** · car: **{ins.status}**")
         if total:
             progress.progress(min(1.0, idx / total), text=f"Frame {idx}/{total}")
-            
+
     try:
         while done < s.max_frames:
             ok, frame = cap.read()
@@ -251,9 +305,8 @@ def run_video(dets: dict, upload, s: Settings):
                 last_ui = now                            # 10 times per second
                 refresh()
         if latest:
-            refresh()      
-        
-    
+            refresh()
+
     finally:
         cap.release()
         if writer:
@@ -300,6 +353,14 @@ def main():
         st.info("👆 Upload a dashcam image or video to begin.")
         show_saved_result()
         return
+
+    if s.auto and s.mode != "Classical" and s.available:
+        choice = choose_model_automatically(s, upload, kind)
+        if choice is None:
+            st.warning("Auto could not read your file, so the default model is used.")
+        else:
+            s = replace(s, weights=choice.weights)
+            explain_auto(choice)
 
     dets = build_detectors(s)
     if kind == "Image":
