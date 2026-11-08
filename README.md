@@ -37,7 +37,9 @@ Features
 
 - 🔌 ROS-style architecture (pure Python, no ROS install needed): publish/subscribe message bus with camera, lane and display nodes, queue size 1 with drop-oldest, and dropped-frame accounting.
 
-- ⏱️ Benchmark script, 59 automated tests, modular package layout.
+- 🤖 Auto model selection: tries the models on your file and picks one. Videos use only the fast models for speed; close calls go to the model trained on more varied data.
+
+- ⏱️ Benchmark script, 72 automated tests, modular package layout.
 
 
 🔥 Key Features
