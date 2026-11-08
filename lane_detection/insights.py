@@ -1,10 +1,8 @@
-"""Turn the model's raw probability map into AI results people can understand."""
 import cv2
-
 import numpy as np
-
 from dataclasses import dataclass
 
+from .deep_learning.postprocess import ego_lane, lane_area
 
 
 @dataclass
@@ -15,33 +13,51 @@ class AIInsights:
     status: str
 
 
-def compute_insights(prob_u8: np.ndarray, threshold: float = 0.5) -> AIInsights:
+def _no_lane(confidence: float, coverage: float) -> "AIInsights":
+    return AIInsights(confidence, coverage, float("nan"), "No lane found")
+
+
+def compute_insights(prob_u8: np.ndarray, threshold: float = 0.5,
+                     ego_only: bool = True) -> AIInsights:
+    """Confidence, coverage and car position.
+
+    The car position is measured on the SAME lane that is drawn on the video
+    (the "my lane" area), so the panel can never say "No lane found" while a
+    lane is on screen.
+    """
     p = prob_u8.astype(np.float32) / 255.0
     mask = p > threshold
     count = int(mask.sum())
     confidence = float(p[mask].mean()) if count else 0.0
     coverage = 100.0 * count / mask.size
 
-
-    # Look at rows near the bottom (closest to the car) for the lane edges.
     h, w = mask.shape
-    mid = w // 2
-    lefts, rights = [], []
-    for y in range(int(h * 0.80), int(h * 0.95)):
-        xs = np.flatnonzero(mask[y])
-        left, right = xs[xs < mid], xs[xs >= mid]
-        if left.size and right.size:
-            lefts.append(left.max())
-            rights.append(right.min())
+    if count == 0:
+        return _no_lane(confidence, coverage)
 
-    if len(lefts) < 3:
-        return AIInsights(confidence, coverage, float("nan"), "No lane found")
+    # The lane area between the two lines = exactly what the overlay paints green.
+    if ego_only:
+        _, area = ego_lane(mask)
+    else:
+        area = lane_area(mask)
+    rows = np.flatnonzero(area.any(axis=1))
+    if rows.size < 3:
+        return _no_lane(confidence, coverage)
+
+    # The rows of that lane that are closest to the car (the lowest ones).
+    near = rows[-max(3, int(h * 0.10)):]
+    lefts, rights = [], []
+    for y in near:
+        xs = np.flatnonzero(area[y])
+        lefts.append(xs[0])
+        rights.append(xs[-1])
     left_x, right_x = float(np.median(lefts)), float(np.median(rights))
     lane_width = right_x - left_x
-    if lane_width < 10:
-        return AIInsights(confidence, coverage, float("nan"), "No lane found")
+    if lane_width < max(4.0, 0.05 * w):
+        return _no_lane(confidence, coverage)
 
     # Car = middle of the image (assumes a centered dashcam).
+    mid = w / 2
     offset = (mid - (left_x + right_x) / 2) / lane_width * 100
     if abs(offset) < 10:
         status = "Centered"
@@ -63,4 +79,3 @@ def probability_heatmap(frame_bgr: np.ndarray, prob_u8: np.ndarray,
     seen = big > 25                  # only paint where the model has an opinion
     out[seen] = blended[seen]
     return out
-        
